@@ -15,8 +15,8 @@ NOMBRES = {
     "M": "Mañana",
     "T": "Tarde",
     "N": "Noche",
-    "L": "Libranza de la rotación",
-    "F": "Fiesta / libre de ajuste de horas",
+    "L": "Libranza (rotación y descansos de las noches)",
+    "F": "Fiesta / día quitado para ajustar las horas",
 }
 
 AZUL = "1F4E78"

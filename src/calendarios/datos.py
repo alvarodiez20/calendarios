@@ -64,6 +64,8 @@ class Parametros:
     # más días seguidos de los que se indican aquí. Evita "trabajar 7 días, librar 1 y seguir".
     min_libranzas_seguidas: int = 2
     max_libranzas_seguidas: int = 3
+    # Y al revés: tampoco se va a trabajar un día suelto entre dos libranzas.
+    min_dias_trabajo_seguidos: int = 2
     tiempo_max_s: int = 60
 
 
@@ -159,6 +161,7 @@ def parametros_a_dict(p: Parametros) -> dict:
         "max_dias_seguidos": p.max_dias_seguidos, "libranzas_tras_max": p.libranzas_tras_max,
         "min_libranzas_seguidas": p.min_libranzas_seguidas,
         "max_libranzas_seguidas": p.max_libranzas_seguidas,
+        "min_dias_trabajo_seguidos": p.min_dias_trabajo_seguidos,
         "tiempo_max_s": p.tiempo_max_s,
     }
 
@@ -229,6 +232,7 @@ def datos_desde_dict(d: dict) -> Datos:
         libranzas_tras_max=int(q.get("libranzas_tras_max", base.libranzas_tras_max)),
         min_libranzas_seguidas=int(q.get("min_libranzas_seguidas", base.min_libranzas_seguidas)),
         max_libranzas_seguidas=int(q.get("max_libranzas_seguidas", base.max_libranzas_seguidas)),
+        min_dias_trabajo_seguidos=int(q.get("min_dias_trabajo_seguidos", base.min_dias_trabajo_seguidos)),
         tiempo_max_s=int(q.get("tiempo_max_s", base.tiempo_max_s)),
     )
     if len(p.descansos_noche) != 7:
@@ -303,6 +307,7 @@ ETIQUETAS_PARAMETROS = [
     *[f"Descansos si la última noche es en {d}" for d in DIAS_SEMANA],
     "Máximo de días seguidos trabajando", "Libranzas después del máximo de días seguidos",
     "Mínimo de días libres seguidos", "Máximo de días libres seguidos",
+    "Mínimo de días de trabajo seguidos",
     "Tiempo máximo de cálculo por grupo (segundos)",
 ]
 
@@ -386,6 +391,8 @@ def dict_desde_excel(origen: str | Path | bytes) -> dict:
             p["min_libranzas_seguidas"] = int(v)
         elif etiqueta == "Máximo de días libres seguidos":
             p["max_libranzas_seguidas"] = int(v)
+        elif etiqueta == "Mínimo de días de trabajo seguidos":
+            p["min_dias_trabajo_seguidos"] = int(v)
         elif etiqueta.startswith("Tiempo máximo"):
             p["tiempo_max_s"] = int(v)
 

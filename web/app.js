@@ -458,6 +458,8 @@ function pintarParametros() {
       () => p.min_libranzas_seguidas, (v) => (p.min_libranzas_seguidas = v), 1, 7),
     campoNum("Máximo de días libres seguidos", "Sin contar los que ya da la rotación",
       () => p.max_libranzas_seguidas, (v) => (p.max_libranzas_seguidas = v), 1, 14),
+    campoNum("Mínimo de días de trabajo seguidos", "Nadie trabaja un día suelto entre libranzas",
+      () => p.min_dias_trabajo_seguidos, (v) => (p.min_dias_trabajo_seguidos = v), 1, 7),
     campoNum("Tiempo máximo de cálculo", "Segundos por grupo", () => p.tiempo_max_s, (v) => (p.tiempo_max_s = v), 5, 600),
     el("div", { class: "descansos" },
       el("strong", {}, "Días de descanso después de la última noche"),

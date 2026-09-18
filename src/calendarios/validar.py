@@ -13,11 +13,10 @@ def minutos(fila: list[str], p: Parametros) -> int:
     return sum(p.duracion[s] for s in fila if s in TRABAJO)
 
 
-def bloques_libres(fila: list[str]) -> list[tuple[int, int]]:
-    """Tramos [a, b) de días sin trabajar."""
+def _bloques(fila: list[str], trabajo: bool) -> list[tuple[int, int]]:
     bloques, a = [], None
     for d, t in enumerate(fila):
-        if t in TRABAJO:
+        if (t in TRABAJO) != trabajo:
             if a is not None:
                 bloques.append((a, d))
             a = None
@@ -26,6 +25,16 @@ def bloques_libres(fila: list[str]) -> list[tuple[int, int]]:
     if a is not None:
         bloques.append((a, len(fila)))
     return bloques
+
+
+def bloques_libres(fila: list[str]) -> list[tuple[int, int]]:
+    """Tramos [a, b) de días sin trabajar."""
+    return _bloques(fila, trabajo=False)
+
+
+def bloques_trabajo(fila: list[str]) -> list[tuple[int, int]]:
+    """Tramos [a, b) de días trabajados."""
+    return _bloques(fila, trabajo=True)
 
 
 def validar(fechas: list[dt.date], turnos: list[list[str]], personas: list[Persona],
@@ -80,4 +89,12 @@ def validar(fechas: list[dt.date], turnos: list[list[str]], personas: list[Perso
             if b - a > p.max_libranzas_seguidas and "F" in fila[a:b]:
                 errores.append(f"{nombre} {fechas[a]:%d/%m}: {b - a} días libres seguidos "
                                f"(el máximo son {p.max_libranzas_seguidas})")
+
+        # Y tampoco se va a trabajar un día suelto entre dos libranzas, si lo provoca una F
+        for a, b in bloques_trabajo(fila):
+            if a == 0 or b == D:
+                continue
+            if b - a < p.min_dias_trabajo_seguidos and "F" in (fila[a - 1], fila[b]):
+                errores.append(f"{nombre} {fechas[a]:%d/%m}: va a trabajar {b - a} día suelto "
+                               f"(el mínimo son {p.min_dias_trabajo_seguidos} seguidos)")
     return errores

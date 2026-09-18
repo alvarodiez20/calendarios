@@ -104,6 +104,8 @@ def _hoja_parametros(ws, anio: int, p: dict):
                                            "Nunca se libra un día suelto (los festivos sí pueden librarse solos)."),
         "Máximo de días libres seguidos": (p["max_libranzas_seguidas"],
                                            "No se encadenan más días libres de los que ya da la rotación."),
+        "Mínimo de días de trabajo seguidos": (p["min_dias_trabajo_seguidos"],
+                                               "Nadie va a trabajar un día suelto entre dos libranzas."),
         "Tiempo máximo de cálculo por grupo (segundos)": (p["tiempo_max_s"], "Normalmente tarda unos segundos."),
     }
     for i, dia in enumerate(DIAS_SEMANA):

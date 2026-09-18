@@ -8,7 +8,9 @@ Funciona igual en el ordenador y en el navegador (Pyodide). Se parte de la rotac
 * descansos tras la última noche (según el día de la semana), que salen siempre como L: una F nunca va
   pegada a las noches, ni dentro del descanso ni justo después,
 * máximo de días seguidos, no pasar de tarde a mañana,
-* días libres en bloques: ni libranzas sueltas ni más días libres seguidos de los que da la rotación,
+* días libres en bloques: ni libranzas sueltas, ni días de trabajo sueltos, ni más días libres
+  seguidos de los que da la rotación,
+* en festivo se trabaja justo el mínimo: el resto libra,
 * Nochebuena / Nochevieja alternas, dos personas de mañana en las dos, y Reyes libre para las de mañana del año anterior,
 * reparto lo más igualado posible de los festivos trabajados.
 """
@@ -25,6 +27,7 @@ from scipy.sparse import coo_array
 from .datos import SEMANAS_ROTACION, Datos, Grupo, Parametros, lunes_de
 
 ESTADOS = ("M", "T", "N", "O")  # O = no trabaja
+NOMBRE_TURNO = {"M": "mañana", "T": "tarde", "N": "noche"}
 DIAS_HISTORIA = 14  # días del año anterior que se tienen en cuenta para descansos
 DIAS_COLA = 10  # días de enero del año siguiente que se calculan (no se imprimen) para no cortar descansos
 # En festivos y alrededor de Navidad y Reyes se permite cualquier cambio de turno; el resto del año solo
@@ -36,7 +39,8 @@ COSTE_LIBRE_A_TRABAJO = 60
 COSTE_CAMBIO_TURNO = 40
 COSTE_QUITAR = {"M": 4, "T": 12, "N": 60}  # quitar un turno de la rotación (se convierte en F)
 COSTE_QUITAR_EN_FESTIVO = {"M": 0, "T": 8, "N": 60}  # en festivo se prefiere librar
-COSTE_DESEQUILIBRIO_FESTIVOS = 200
+COSTE_DESEQUILIBRIO_FESTIVOS = 600
+COSTE_SOBRA_EN_FESTIVO = 300  # cada persona que trabaja en festivo por encima del mínimo
 COSTE_F_EXTRA_MES = 3  # cada F por encima de 2 en un mismo mes (reparte las F por el año)
 COSTE_REGLA_CON_ANIO_ANTERIOR = 1000
 
@@ -50,6 +54,7 @@ class Resultado:
     estado: str
     avisos: list[str] = field(default_factory=list)
     pareja_mananas: list[int] = field(default_factory=list)  # índices de las 2 de mañana en Navidad
+    cola: list[list[str]] = field(default_factory=list)  # primeros días de enero siguiente (no se imprimen)
 
 
 def turno_base(grupo: Grupo, persona: int, fecha: dt.date, lunes_ref: dt.date) -> str:
@@ -181,6 +186,15 @@ def calcular_grupo(datos: Datos, grupo: Grupo, *, relajar: frozenset[str] = froz
         for s in ("M", "T", "N"):
             m.add([(x[k, d, s], 1) for k in P], lb=p.minimos[s])
 
+    # --- En festivo se trabaja justo el mínimo: el resto libra. Si no se puede (por ejemplo porque la
+    # alternancia de Nochebuena/Nochevieja obliga a trabajar a más gente), se pasa del mínimo y se avisa.
+    sobra_festivo: list[tuple[int, dt.date, str]] = []
+    for d in sorted(festivos_d):
+        for s in ("M", "T", "N"):
+            sobra = m.var(0, len(personas), COSTE_SOBRA_EN_FESTIVO, entera=False)
+            m.add([(x[k, d, s], -1) for k in P] + [(sobra, 1)], lb=-p.minimos[s])
+            sobra_festivo.append((sobra, fechas_h[d], s))
+
     for k in P:
         for d in range(D - 1):
             # No pasar de tarde a mañana:  T[d] + M[d+1] <= 1   <=>  -T[d] - M[d+1] >= -1
@@ -214,6 +228,16 @@ def calcular_grupo(datos: Datos, grupo: Grupo, *, relajar: frozenset[str] = froz
                         continue
                     regla([(x[k, d - 1, "O"], 1), (x[k, d + g, "O"], 1)]
                           + [(x[k, d + i, "O"], -1) for i in range(g)], 1 - g, k, d - 1, d + g)
+                # Y al revés: nadie va a trabajar un día suelto entre dos libranzas.
+                #   -O[d-1] + Σ O[d..d+g-1] - O[d+g] >= -1
+                for g in range(1, p.min_dias_trabajo_seguidos):
+                    if d + g >= D:
+                        continue
+                    if (base[k][d - 1] == "L" and base[k][d + g] == "L"
+                            and all(base[k][d + i] != "L" for i in range(g))):
+                        continue  # la rotación ya lo pone así: no se toca
+                    regla([(x[k, d - 1, "O"], -1), (x[k, d + g, "O"], -1)]
+                          + [(x[k, d + i, "O"], 1) for i in range(g)], -1, k, d - 1, d + g)
                 # Máximo: no se encadenan más días libres de los que ya trae la rotación.
                 #   Σ O[d..d+n] <= n   <=>  -Σ O >= -n
                 n = p.max_libranzas_seguidas
@@ -274,24 +298,31 @@ def calcular_grupo(datos: Datos, grupo: Grupo, *, relajar: frozenset[str] = froz
         return Resultado(grupo, fechas, [], base_anio, estado, avisos)
 
     val = lambda v: res.x[v] > 0.5  # noqa: E731
+    for v, fecha, s in sobra_festivo:
+        de_mas = round(res.x[v])
+        if de_mas:
+            avisos.append(f"{fecha:%d/%m}: trabajan {p.minimos[s] + de_mas} personas de "
+                          f"{NOMBRE_TURNO[s]} y el mínimo son {p.minimos[s]}; ese día no se puede "
+                          "librar a más gente sin saltarse otra regla.")
     pareja = [k for k, v in es_pareja.items() if val(v)]
     avisos += sorted({texto for v, texto in blandas if val(v)})
-    turnos = []
+    turnos, cola = [], []
     for k in P:
         estados = [next(s for s in ESTADOS if val(x[k, d, s])) for d in range(D)]
         obligadas = libranzas_obligadas(estados, fechas_h, p)
         fila = []
-        for d in range(H, A):
+        for d in range(H, D):
             s = estados[d]
             if s == "O":  # libranza de la rotación o del convenio; si no, día quitado por horas
                 s = "L" if base[k][d] == "L" or d in obligadas else "F"
             fila.append(s)
-        turnos.append(fila)
+        turnos.append(fila[:A - H])
+        cola.append(fila[A - H:])
     estado = "OPTIMO" if res.status == 0 else "VALIDO"
     if estado == "VALIDO":
         avisos.append("Se ha encontrado un calendario válido, pero quizá no el de menos cambios "
                       "(sube el tiempo máximo de cálculo si quieres afinarlo).")
-    return Resultado(grupo, fechas, turnos, base_anio, estado, avisos, pareja)
+    return Resultado(grupo, fechas, turnos, base_anio, estado, avisos, pareja, cola)
 
 
 def _reglas_navidad(m: _Milp, x, datos: Datos, grupo: Grupo, idx, avisos: list[str]) -> dict[int, int]:
@@ -317,8 +348,11 @@ def _reglas_navidad(m: _Milp, x, datos: Datos, grupo: Grupo, idx, avisos: list[s
         # La pareja: mañana el 24, 25 y 31      M[d] - pareja >= 0
         for d in (d24, d25, d31):
             m.add([(x[k, d, "M"], 1), (es_pareja[k], -1)], lb=0)
-        # El resto, exactamente una de las dos noches; la pareja, las dos:  O24 + O31 + pareja = 1
-        m.add([(x[k, d24, "O"], 1), (x[k, d31, "O"], 1), (es_pareja[k], 1)], 1, 1)
+        # Nadie (salvo la pareja de mañanas) trabaja el 24 y el 31: al menos uno de los dos libre.
+        # No se puede exigir que trabaje justo uno de los dos: con 13 personas no cuadra con los mínimos
+        # (11 personas para 2 x 5 huecos), y era lo que metía gente de más el 24 y el 25.
+        #   O24 + O31 + pareja >= 1
+        m.add([(x[k, d24, "O"], 1), (x[k, d31, "O"], 1), (es_pareja[k], 1)], lb=1)
         # Navidad con el mismo turno que Nochebuena
         for s in ESTADOS:
             m.add([(x[k, d25, s], 1), (x[k, d24, s], -1)], 0, 0)
