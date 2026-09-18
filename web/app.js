@@ -128,6 +128,8 @@ async function cargarEstado() {
   let guardado = null;
   try { guardado = JSON.parse(localStorage.getItem(CLAVE_ESTADO)); } catch { /* nada */ }
   estado = guardado?.grupos ? guardado : structuredClone(inicial);
+  // Un estado guardado con una versión anterior puede no tener todos los ajustes: se completan.
+  estado.parametros = { ...structuredClone(inicial.parametros), ...(estado.parametros || {}) };
   cargarEstado.inicial = inicial;
 }
 
@@ -452,10 +454,14 @@ function pintarParametros() {
     campoNum("Mínimo de noche", "", () => p.minimos.N, (v) => (p.minimos.N = v), 0, 13),
     campoNum("Máximo de días seguidos", "", () => p.max_dias_seguidos, (v) => (p.max_dias_seguidos = v), 1, 14),
     campoNum("Libranzas tras el máximo", "", () => p.libranzas_tras_max, (v) => (p.libranzas_tras_max = v), 0, 7),
+    campoNum("Mínimo de días libres seguidos", "Nunca se libra un día suelto (salvo festivos)",
+      () => p.min_libranzas_seguidas, (v) => (p.min_libranzas_seguidas = v), 1, 7),
+    campoNum("Máximo de días libres seguidos", "Sin contar los que ya da la rotación",
+      () => p.max_libranzas_seguidas, (v) => (p.max_libranzas_seguidas = v), 1, 14),
     campoNum("Tiempo máximo de cálculo", "Segundos por grupo", () => p.tiempo_max_s, (v) => (p.tiempo_max_s = v), 5, 600),
     el("div", { class: "descansos" },
       el("strong", {}, "Días de descanso después de la última noche"),
-      el("small", { style: "display:block;margin-bottom:8px" }, "Según el día de la semana de esa noche. Si la rotación tenía turno ese día, sale como F."),
+      el("small", { style: "display:block;margin-bottom:8px" }, "Según el día de la semana de esa noche. Salen siempre como L, nunca como F."),
       el("div", {}, ...DIAS.map((dia, i) => el("label", {}, dia,
         el("input", { type: "number", min: 0, max: 7, value: p.descansos_noche[i],
           onchange: (e) => { p.descansos_noche[i] = Math.max(0, Math.min(7, Number(e.target.value) || 0)); guardar(); } }))))),

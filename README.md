@@ -29,11 +29,13 @@ también se pueden descargar y subir como Excel.
 - Cada día hay al menos 3 personas de mañana, 3 de tarde y 1 de noche en cada grupo.
 - Cada persona suma 1715 h (± 3:30). Mañana y tarde son 7:00 y la noche 11:22. Las horas que sobran
   se quitan como días **F**, sobre todo en mañanas y festivos.
-- Descansos tras la última noche, según el día de esa noche:
-  - viernes: 2 L;
-  - miércoles o jueves: 3 L;
-  - lunes-martes y sábado-domingo: 2 L + 1 F.
+- Descansos tras la última noche, según el día de esa noche: **viernes y sábado 2 L**, el resto **3 L**.
+  Siempre salen como **L**: una **F nunca va pegada a las noches**, ni dentro del descanso ni justo después.
 - Después de 7 días seguidos hay 2 libranzas. No se pasa de tarde a mañana.
+- Los días libres van en **bloques**: nunca una libranza suelta (solo un festivo puede librarse solo) y nunca
+  más días libres seguidos de los que ya da la rotación. Así no salen cosas como «7 días, 1 libranza y otros 7».
+- Diciembre se calcula con los primeros días de enero del año siguiente por delante, para no cortar
+  el descanso de las noches en el cambio de año.
 - **Navidad**:
   - Quien hizo Nochebuena hace Nochevieja al año siguiente, y al revés.
   - El 25 se trabaja con el mismo turno que el 24, y el 1 de enero con el mismo turno que el 31.

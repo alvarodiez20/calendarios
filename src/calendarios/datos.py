@@ -56,10 +56,14 @@ class Parametros:
     duracion: dict[str, int] = field(default_factory=lambda: {"M": 420, "T": 420, "N": 682})
     minimos: dict[str, int] = field(default_factory=lambda: {"M": 3, "T": 3, "N": 1})
     # Días de descanso tras la última noche según el día de esa noche (lunes..domingo).
-    # Si en la rotación ese día había turno, sale como F.
+    # Salen siempre como L: las F nunca se pegan a las noches.
     descansos_noche: list[int] = field(default_factory=lambda: [3, 3, 3, 3, 2, 2, 3])
     max_dias_seguidos: int = 7
     libranzas_tras_max: int = 2
+    # Los días libres van siempre en bloques: nunca una libranza suelta (salvo en festivo) y nunca
+    # más días seguidos de los que se indican aquí. Evita "trabajar 7 días, librar 1 y seguir".
+    min_libranzas_seguidas: int = 2
+    max_libranzas_seguidas: int = 3
     tiempo_max_s: int = 60
 
 
@@ -153,6 +157,8 @@ def parametros_a_dict(p: Parametros) -> dict:
         "horas_anuales": p.horas_anuales, "margen": p.margen, "duracion": dict(p.duracion),
         "minimos": dict(p.minimos), "descansos_noche": list(p.descansos_noche),
         "max_dias_seguidos": p.max_dias_seguidos, "libranzas_tras_max": p.libranzas_tras_max,
+        "min_libranzas_seguidas": p.min_libranzas_seguidas,
+        "max_libranzas_seguidas": p.max_libranzas_seguidas,
         "tiempo_max_s": p.tiempo_max_s,
     }
 
@@ -221,6 +227,8 @@ def datos_desde_dict(d: dict) -> Datos:
         descansos_noche=[int(x) for x in q.get("descansos_noche", base.descansos_noche)],
         max_dias_seguidos=int(q.get("max_dias_seguidos", base.max_dias_seguidos)),
         libranzas_tras_max=int(q.get("libranzas_tras_max", base.libranzas_tras_max)),
+        min_libranzas_seguidas=int(q.get("min_libranzas_seguidas", base.min_libranzas_seguidas)),
+        max_libranzas_seguidas=int(q.get("max_libranzas_seguidas", base.max_libranzas_seguidas)),
         tiempo_max_s=int(q.get("tiempo_max_s", base.tiempo_max_s)),
     )
     if len(p.descansos_noche) != 7:
@@ -294,6 +302,7 @@ ETIQUETAS_PARAMETROS = [
     "Mínimo de personas de mañana", "Mínimo de personas de tarde", "Mínimo de personas de noche",
     *[f"Descansos si la última noche es en {d}" for d in DIAS_SEMANA],
     "Máximo de días seguidos trabajando", "Libranzas después del máximo de días seguidos",
+    "Mínimo de días libres seguidos", "Máximo de días libres seguidos",
     "Tiempo máximo de cálculo por grupo (segundos)",
 ]
 
@@ -373,6 +382,10 @@ def dict_desde_excel(origen: str | Path | bytes) -> dict:
             p["max_dias_seguidos"] = int(v)
         elif etiqueta == "Libranzas después del máximo de días seguidos":
             p["libranzas_tras_max"] = int(v)
+        elif etiqueta == "Mínimo de días libres seguidos":
+            p["min_libranzas_seguidas"] = int(v)
+        elif etiqueta == "Máximo de días libres seguidos":
+            p["max_libranzas_seguidas"] = int(v)
         elif etiqueta.startswith("Tiempo máximo"):
             p["tiempo_max_s"] = int(v)
 

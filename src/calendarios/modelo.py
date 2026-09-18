@@ -5,7 +5,10 @@ Funciona igual en el ordenador y en el navegador (Pyodide). Se parte de la rotac
 
 * mínimos diarios de mañana / tarde / noche,
 * horas anuales dentro del margen (las horas que sobran se quitan como días "F", sobre todo de mañanas),
-* descansos tras la última noche (según el día de la semana), máximo de días seguidos, no pasar de tarde a mañana,
+* descansos tras la última noche (según el día de la semana), que salen siempre como L: una F nunca va
+  pegada a las noches, ni dentro del descanso ni justo después,
+* máximo de días seguidos, no pasar de tarde a mañana,
+* días libres en bloques: ni libranzas sueltas ni más días libres seguidos de los que da la rotación,
 * Nochebuena / Nochevieja alternas, dos personas de mañana en las dos, y Reyes libre para las de mañana del año anterior,
 * reparto lo más igualado posible de los festivos trabajados.
 """
@@ -19,10 +22,11 @@ import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import coo_array
 
-from .datos import SEMANAS_ROTACION, Datos, Grupo, lunes_de
+from .datos import SEMANAS_ROTACION, Datos, Grupo, Parametros, lunes_de
 
 ESTADOS = ("M", "T", "N", "O")  # O = no trabaja
 DIAS_HISTORIA = 14  # días del año anterior que se tienen en cuenta para descansos
+DIAS_COLA = 10  # días de enero del año siguiente que se calculan (no se imprimen) para no cortar descansos
 # En festivos y alrededor de Navidad y Reyes se permite cualquier cambio de turno; el resto del año solo
 # se puede quitar un turno de la rotación (convertirlo en F), que es mucho más rápido de calcular.
 VENTANA_LIBRE = ((1, 1, 1, 10), (12, 15, 12, 31))
@@ -89,6 +93,24 @@ def _en_ventana_libre(fecha: dt.date) -> bool:
     return any((m1, d1) <= (fecha.month, fecha.day) <= (m2, d2) for m1, d1, m2, d2 in VENTANA_LIBRE)
 
 
+def libranzas_obligadas(estados: list[str], fechas: list[dt.date], p: Parametros) -> set[int]:
+    """Días sin trabajar que manda el convenio: el descanso tras la última noche y las libranzas tras el
+    máximo de días seguidos. Son libranzas (L), nunca días quitados por horas (F).
+
+    `estados` usa M/T/N y "O" (o cualquier código que no sea turno) para los días sin trabajar.
+    """
+    obligadas: set[int] = set()
+    n = len(estados)
+    seguidos = 0
+    for d in range(n):
+        if estados[d] == "N" and (d + 1 >= n or estados[d + 1] != "N"):
+            obligadas.update(d + j for j in range(1, p.descansos_noche[fechas[d].weekday()] + 1))
+        seguidos = seguidos + 1 if estados[d] in ("M", "T", "N") else 0
+        if seguidos >= p.max_dias_seguidos:
+            obligadas.update(d + j for j in range(1, p.libranzas_tras_max + 1))
+    return obligadas
+
+
 def calcular_grupo(datos: Datos, grupo: Grupo, *, relajar: frozenset[str] = frozenset(),
                    libre_todo_el_anio: bool = False) -> Resultado:
     p = datos.parametros
@@ -96,8 +118,9 @@ def calcular_grupo(datos: Datos, grupo: Grupo, *, relajar: frozenset[str] = froz
     lunes_ref = datos.lunes_referencia
     inicio = dt.date(anio, 1, 1)
     n_anio = (dt.date(anio + 1, 1, 1) - inicio).days
-    fechas_h = [inicio + dt.timedelta(days=i) for i in range(-DIAS_HISTORIA, n_anio)]
+    fechas_h = [inicio + dt.timedelta(days=i) for i in range(-DIAS_HISTORIA, n_anio + DIAS_COLA)]
     H = DIAS_HISTORIA
+    A = H + n_anio  # primer día que ya no es del año: de A en adelante es la cola de enero siguiente
     D = len(fechas_h)
     idx = {f: i for i, f in enumerate(fechas_h)}
     personas = grupo.personas
@@ -153,8 +176,8 @@ def calcular_grupo(datos: Datos, grupo: Grupo, *, relajar: frozenset[str] = froz
         blandas.append((holgura, f"{personas[k].nombre}: revisa los primeros días de enero "
                                  f"(descansos respecto a diciembre de {anio - 1})"))
 
-    # --- Mínimos diarios
-    for d in range(H, D):
+    # --- Mínimos diarios (solo del año; la cola de enero la cubrirá el calendario siguiente)
+    for d in range(H, A):
         for s in ("M", "T", "N"):
             m.add([(x[k, d, s], 1) for k in P], lb=p.minimos[s])
 
@@ -179,9 +202,35 @@ def calcular_grupo(datos: Datos, grupo: Grupo, *, relajar: frozenset[str] = froz
                     regla([(x[k, d + L + j, "O"], 1)] + [(x[k, d + i, "O"], 1) for i in range(L)], 1,
                           k, d, d + L + j)
 
+    # --- Los días libres van en bloques: ni libranzas sueltas ni bloques interminables
+    if "bloques" not in relajar:
+        for k in P:
+            for d in range(H, D):
+                # Mínimo: prohibido trabajar, librar menos días de la cuenta y volver a trabajar.
+                # Un festivo suelto sí se puede librar.
+                #   O[d-1] - Σ O[d..d+g-1] + O[d+g] >= 1 - g
+                for g in range(1, p.min_libranzas_seguidas):
+                    if d + g >= D or all(i in festivos_d for i in range(d, d + g)):
+                        continue
+                    regla([(x[k, d - 1, "O"], 1), (x[k, d + g, "O"], 1)]
+                          + [(x[k, d + i, "O"], -1) for i in range(g)], 1 - g, k, d - 1, d + g)
+                # Máximo: no se encadenan más días libres de los que ya trae la rotación.
+                #   Σ O[d..d+n] <= n   <=>  -Σ O >= -n
+                n = p.max_libranzas_seguidas
+                if n and d + n < D and any(base[k][i] != "L" for i in range(d, d + n + 1)):
+                    regla([(x[k, i, "O"], -1) for i in range(d, d + n + 1)], -n, k, d, d + n)
+
+            # Después del descanso de las noches se vuelve a trabajar: las F no se pegan a las noches.
+            #   N[d] - N[d+1] + O[d+R+1] <= 1
+            for d in range(D - 1):
+                e = d + p.descansos_noche[fechas_h[d].weekday()] + 1
+                if e >= D or e < H or base[k][e] == "L" or e in festivos_d:
+                    continue
+                regla([(x[k, d, "N"], -1), (x[k, d + 1, "N"], 1), (x[k, e, "O"], -1)], -1, k, d, e)
+
     # --- Horas anuales
     for k in P:
-        m.add([(x[k, d, s], p.duracion[s]) for d in range(H, D) for s in ("M", "T", "N")],
+        m.add([(x[k, d, s], p.duracion[s]) for d in range(H, A) for s in ("M", "T", "N")],
               p.horas_anuales - p.margen, p.horas_anuales + p.margen)
 
     # --- Navidad
@@ -202,16 +251,25 @@ def calcular_grupo(datos: Datos, grupo: Grupo, *, relajar: frozenset[str] = froz
     # --- Repartir las F (libranzas de ajuste) a lo largo del año
     for k in P:
         for mes in range(1, 13):
-            dias = [d for d in range(H, D) if fechas_h[d].month == mes and base[k][d] != "L" and d not in festivos_d]
+            dias = [d for d in range(H, A)
+                    if fechas_h[d].month == mes and base[k][d] != "L" and d not in festivos_d]
             exceso = m.var(0, len(dias), COSTE_F_EXTRA_MES, entera=False)
             m.add([(exceso, 1)] + [(x[k, d, "O"], -1) for d in dias], lb=-2)
 
     res = m.resolver(p.tiempo_max_s)
-    fechas = fechas_h[H:]
-    base_anio = [fila[H:] for fila in base]
+    fechas = fechas_h[H:A]
+    base_anio = [fila[H:A] for fila in base]
     if res.x is None:
-        if not libre_todo_el_anio and res.status == 2:  # sin solución: probar dejando cambiar todo el año
+        if res.status == 2 and not libre_todo_el_anio:  # sin solución: dejar cambiar de turno todo el año
             return calcular_grupo(datos, grupo, relajar=relajar, libre_todo_el_anio=True)
+        if "bloques" not in relajar:  # último recurso: soltar las reglas de días libres seguidos
+            r = calcular_grupo(datos, grupo, relajar=relajar | {"bloques"},
+                               libre_todo_el_anio=libre_todo_el_anio)
+            if r.turnos:
+                r.avisos.insert(0, f"No salen los días libres seguidos (mínimo {p.min_libranzas_seguidas}, "
+                                   f"máximo {p.max_libranzas_seguidas}) con esta rotación y estas horas: "
+                                   "se ha calculado sin esa regla, así que puede haber libranzas sueltas.")
+                return r
         estado = "TIEMPO" if res.status == 1 else "SIN_SOLUCION"
         return Resultado(grupo, fechas, [], base_anio, estado, avisos)
 
@@ -220,11 +278,13 @@ def calcular_grupo(datos: Datos, grupo: Grupo, *, relajar: frozenset[str] = froz
     avisos += sorted({texto for v, texto in blandas if val(v)})
     turnos = []
     for k in P:
+        estados = [next(s for s in ESTADOS if val(x[k, d, s])) for d in range(D)]
+        obligadas = libranzas_obligadas(estados, fechas_h, p)
         fila = []
-        for d in range(H, D):
-            s = next(s for s in ESTADOS if val(x[k, d, s]))
-            if s == "O":
-                s = "L" if base[k][d] == "L" else "F"
+        for d in range(H, A):
+            s = estados[d]
+            if s == "O":  # libranza de la rotación o del convenio; si no, día quitado por horas
+                s = "L" if base[k][d] == "L" or d in obligadas else "F"
             fila.append(s)
         turnos.append(fila)
     estado = "OPTIMO" if res.status == 0 else "VALIDO"

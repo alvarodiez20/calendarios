@@ -8,7 +8,7 @@ from calendarios import api
 from calendarios.datos import (ROTACION_3_4_C, Datos, Grupo, Parametros, Persona, a_minutos, dict_por_defecto,
                                domingo_de_pascua, festivos_por_defecto)
 from calendarios.modelo import calcular_grupo
-from calendarios.validar import validar
+from calendarios.validar import bloques_libres, validar
 
 
 def _datos(personas: list[Persona]) -> tuple[Datos, Grupo]:
@@ -84,13 +84,41 @@ def test_descansos_tras_la_noche_segun_el_dia():
     datos, g = _datos(personas)
     r = calcular_grupo(datos, g)
     descansos = datos.parametros.descansos_noche
+    assert descansos == [3, 3, 3, 3, 2, 2, 3]
     for fila in r.turnos:
         for d in range(len(fila) - 4):
             if fila[d] == "N" and fila[d + 1] != "N":
                 R = descansos[r.fechas[d].weekday()]
-                assert all(s in "LF" for s in fila[d + 1:d + 1 + R])
-    # Noches de lunes-martes: miércoles y jueves L, y el viernes (M en la rotación) pasa a F
-    assert descansos == [3, 3, 3, 3, 2, 2, 3]
+                # Después de las noches van libranzas: nunca una F, ni en el descanso ni pegada a él
+                assert all(s == "L" for s in fila[d + 1:d + 1 + R])
+                assert fila[d + 1 + R] != "F" or r.fechas[d + 1 + R] in datos.festivos
+
+
+def test_los_dias_libres_van_en_bloques():
+    """Ni libranzas sueltas ni bloques más largos que los de la rotación: nada de «7 días y 1 libranza»."""
+    personas = [Persona(i + 1, f"P{i + 1}") for i in range(13)]
+    datos, g = _datos(personas)
+    p = datos.parametros
+    r = calcular_grupo(datos, g)
+    assert r.turnos, r.estado
+    for k, fila in enumerate(r.turnos):
+        for a, b in bloques_libres(fila):
+            if a == 0 or b == len(fila):
+                continue  # bloque cortado por el cambio de año
+            festivo = all(r.fechas[i] in datos.festivos for i in range(a, b))
+            assert b - a >= p.min_libranzas_seguidas or festivo, (k, r.fechas[a], fila[a:b])
+            assert b - a <= p.max_libranzas_seguidas or "F" not in fila[a:b], (k, r.fechas[a], fila[a:b])
+
+
+def test_validar_detecta_libranzas_sueltas_y_f_pegada_a_las_noches():
+    p = Parametros(anio=2027, minimos={"M": 0, "T": 0, "N": 0}, horas_anuales=0, margen=10 ** 9,
+                   descansos_noche=[2] * 7)
+    fechas = [dt.date(2027, 3, 1) + dt.timedelta(days=i) for i in range(12)]
+    fila = list("NNLFMMMLMMMM")  # F pegada al descanso de la noche, y una libranza suelta
+    errores = validar(fechas, [fila], [Persona(1, "Ana")], p, {})
+    assert any("F pegada al descanso de las noches" in e for e in errores), errores
+    assert any("día suelto" in e for e in errores), errores
+    assert validar(fechas, [list("NNLLMMMLLMMM")], [Persona(1, "Ana")], p, {}) == []
 
 
 def test_excel_de_datos_ida_y_vuelta():

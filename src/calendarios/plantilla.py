@@ -100,12 +100,16 @@ def _hoja_parametros(ws, anio: int, p: dict):
         "Mínimo de personas de noche": (p["minimos"]["N"], "Por grupo y día."),
         "Máximo de días seguidos trabajando": (p["max_dias_seguidos"], ""),
         "Libranzas después del máximo de días seguidos": (p["libranzas_tras_max"], ""),
+        "Mínimo de días libres seguidos": (p["min_libranzas_seguidas"],
+                                           "Nunca se libra un día suelto (los festivos sí pueden librarse solos)."),
+        "Máximo de días libres seguidos": (p["max_libranzas_seguidas"],
+                                           "No se encadenan más días libres de los que ya da la rotación."),
         "Tiempo máximo de cálculo por grupo (segundos)": (p["tiempo_max_s"], "Normalmente tarda unos segundos."),
     }
     for i, dia in enumerate(DIAS_SEMANA):
         valores[f"Descansos si la última noche es en {dia}"] = (
             p["descansos_noche"][i],
-            "Días sin trabajar tras la última noche. Si la rotación tenía turno ese día, sale como F."
+            "Días sin trabajar tras la última noche. Salen siempre como L, nunca como F."
             if i == 0 else "")
     for etiqueta in ETIQUETAS_PARAMETROS:
         fila = _fila_parametro(etiqueta)
