@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Calendarios de turnos</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📅</text></svg>">
+  <link rel="stylesheet" href="estilos.css?v=__VERSION__">
+</head>
+<body>
+
+<!-- PIN -->
+<section id="pantalla-pin" class="pin">
+  <div class="pin-caja">
+    <div class="pin-icono">📅</div>
+    <h1>Calendarios de turnos</h1>
+    <p>Escribe el PIN para entrar</p>
+    <div class="pin-puntos" aria-live="polite"><span></span><span></span><span></span><span></span></div>
+    <p class="pin-error" id="pin-error" hidden>PIN incorrecto. Prueba otra vez.</p>
+    <div class="pin-teclado" id="pin-teclado"></div>
+  </div>
+</section>
+
+<!-- APP -->
+<main id="app" hidden>
+  <header class="cabecera">
+    <div>
+      <h1>📅 Calendarios de turnos</h1>
+      <p class="sub">Residencia · Burgos</p>
+    </div>
+    <div class="anio">
+      <span>Año del calendario</span>
+      <div class="contador">
+        <button type="button" data-anio="-1" aria-label="Año anterior">−</button>
+        <strong id="anio"></strong>
+        <button type="button" data-anio="1" aria-label="Año siguiente">+</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="estado-motor" class="estado-motor"></div>
+
+  <!-- 1 -->
+  <section class="paso">
+    <h2><span class="num">1</span> Tus datos</h2>
+    <p>Todo lo que cambies aquí se guarda solo en este ordenador. También puedes trabajar con Excel:
+      descarga la plantilla, rellénala y súbela.</p>
+    <div class="botones">
+      <button type="button" class="boton" id="btn-plantilla-vacia">⬇️ Descargar plantilla vacía</button>
+      <button type="button" class="boton" id="btn-exportar">⬇️ Descargar mis datos en Excel</button>
+      <label class="boton">⬆️ Subir Excel de datos<input type="file" id="subir-datos" accept=".xlsx" hidden></label>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="paso">
+    <h2><span class="num">2</span> Grupos</h2>
+    <p>Elige un grupo para ver y cambiar su rotación y sus personas. Los grupos con la rotación vacía no se calculan.</p>
+    <div class="pestanas" id="pestanas" role="tablist"></div>
+    <div id="grupo"></div>
+  </section>
+
+  <!-- 3 -->
+  <section class="paso">
+    <h2><span class="num">3</span> Festivos <span id="festivos-anio"></span></h2>
+    <p>Revisa la lista con el calendario laboral oficial. Si un festivo cae en domingo y se traslada, cambia la fecha.</p>
+    <div id="festivos"></div>
+    <div class="botones">
+      <button type="button" class="boton pequeno" id="btn-anadir-festivo">➕ Añadir festivo</button>
+      <button type="button" class="boton pequeno secundario" id="btn-restablecer-festivos">↺ Volver a los festivos por defecto</button>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="paso">
+    <details id="ajustes">
+      <summary><h2><span class="num">4</span> Ajustes <small>(normalmente no hay que tocarlos)</small></h2></summary>
+      <div id="parametros" class="parametros"></div>
+    </details>
+  </section>
+
+  <!-- 5 -->
+  <section class="paso destacado">
+    <h2><span class="num">5</span> Generar el calendario</h2>
+    <button type="button" class="boton grande" id="btn-generar">✨ Generar calendario <span class="anio-txt"></span></button>
+    <div id="resultado"></div>
+  </section>
+
+  <!-- 6 -->
+  <section class="paso">
+    <h2><span class="num">6</span> Preparar el año siguiente</h2>
+    <p>Cuando el calendario de <span class="anio-txt"></span> esté terminado (con los cambios que hayas hecho a mano en el Excel),
+      súbelo aquí. Se apunta quién ha hecho Nochebuena y Nochevieja y se pasa todo al año <span class="anio-sig"></span>.</p>
+    <label class="boton">⬆️ Subir calendario <span class="anio-txt"></span><input type="file" id="subir-calendario" accept=".xlsx" hidden></label>
+  </section>
+
+  <footer class="pie">
+    <button type="button" class="enlace" id="btn-reiniciar">Empezar de cero</button>
+    · <a href="https://github.com/alvarodiez20/calendarios" target="_blank" rel="noopener">Código</a>
+  </footer>
+</main>
+
+<div id="cargando" class="cargando" hidden>
+  <div class="cargando-caja">
+    <div class="rueda"></div>
+    <p id="cargando-texto">Un momento…</p>
+  </div>
+</div>
+<div id="aviso" class="aviso" role="status" hidden></div>
+
+<script>window.VERSION = "__VERSION__";</script>
+<script src="app.js?v=__VERSION__"></script>
+</body>
+</html>

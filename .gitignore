@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# Los Excel llevan datos personales: no se versionan
+*.xlsx
+~$*
+_site/
